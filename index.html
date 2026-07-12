@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Github Uploader</title>
+    <!-- Outfit Font from Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <!-- Background Glows -->
+    <img src="/assets/Ellipse 82.png" class="bg-glow bg-glow-left" alt="Glow Left">
+    <img src="/assets/Ellipse 85.png" class="bg-glow bg-glow-right" alt="Glow Right">
+    <img src="/assets/images__1_-removebg-preview 1.png" class="bg-octocat" alt="Github Logo">
+
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <h1 class="app-title">Github Uploader</h1>
+            <div id="user-profile" class="user-profile hidden">
+                <img id="user-avatar" src="" alt="Avatar">
+                <span id="user-username"></span>
+                <button id="btn-logout" class="btn-icon" title="Disconnect Token">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Content Grid -->
+        <main class="app-main">
+            <!-- Create Repository Section -->
+            <section class="section-card">
+                <h2 class="section-title">Create new repository name</h2>
+                <div class="input-with-button">
+                    <input type="text" id="new-repo-name" placeholder="Enter repository name..." class="dashed-input">
+                    <button id="btn-create-repo" class="btn-plus" title="Create Repository">+</button>
+                </div>
+                <div class="repo-visibility-container">
+                    <label class="visibility-option">
+                        <input type="radio" name="repo-visibility" value="private" checked>
+                        <span class="custom-radio"></span>
+                        <span class="label-text">Private</span>
+                    </label>
+                    <label class="visibility-option">
+                        <input type="radio" name="repo-visibility" value="public">
+                        <span class="custom-radio"></span>
+                        <span class="label-text">Public</span>
+                    </label>
+                </div>
+            </section>
+
+            <!-- Select Repository Section -->
+            <section class="section-card">
+                <h2 class="section-title">Select your repository below</h2>
+                <div id="repo-grid" class="repo-grid">
+                    <!-- Dynamic repositories list -->
+                    <div class="loading-placeholder">Loading repositories...</div>
+                </div>
+            </section>
+
+            <!-- Local Files Section -->
+            <section class="section-card">
+                <div class="files-header">
+                    <h2 class="section-title">Your files to upload</h2>
+                    <div class="folder-tag">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" class="icon-folder"><path d="M10 4H4c-1.11 0-1.99.89-1.99 2L2 18c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V8c0-1.11-.89-2-2-2h-8l-2-2z"/></svg>
+                        <span class="folder-name">Github uploder</span>
+                    </div>
+                    <div id="sync-status" class="sync-status">
+                        <span>Syncing</span>
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" class="icon-sync rotating"><path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                    </div>
+                </div>
+                
+                <div id="files-list" class="files-list">
+                    <!-- Dynamic files list -->
+                    <div class="no-files-placeholder">No files in "Github uploder" directory</div>
+                </div>
+            </section>
+
+            <!-- Action Section -->
+            <section class="action-section">
+                <button id="btn-upload" class="btn-upload" disabled>Upload</button>
+            </section>
+
+            <!-- Progress Log Console (hidden by default) -->
+            <section id="console-card" class="section-card console-card hidden">
+                <h2 class="section-title">Upload Progress</h2>
+                <div id="console-log" class="console-log"></div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Token Entry Modal -->
+    <div id="token-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <h2 class="modal-title">GitHub Authentication</h2>
+            <p class="modal-desc">Please enter your GitHub Personal Access Token (PAT) to get started.</p>
+            <div class="token-instructions">
+                <p>The token requires the <strong>repo</strong> scope to list, create, and upload files to your repositories.</p>
+                <a href="https://github.com/settings/tokens/new?scopes=repo" target="_blank" class="token-link">Create token on GitHub &nearr;</a>
+            </div>
+            <div class="modal-form">
+                <input type="password" id="token-input" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" class="dashed-input">
+                <button id="btn-save-token" class="btn-upload">Connect Account</button>
+            </div>
+            <div id="token-error" class="error-message hidden"></div>
+        </div>
+    </div>
+    
+    <script src="/static/app.js"></script>
+</body>
+</html>
