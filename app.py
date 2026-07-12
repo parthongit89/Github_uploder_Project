@@ -86,7 +86,14 @@ def api_config():
                 'avatar_url': user_data.get('avatar_url')
             })
         else:
-            return jsonify({'configured': False, 'error': 'Invalid token saved'})
+            # Token is invalid or expired! Let's delete the config file automatically
+            cfg_file = get_config_file(uid)
+            try:
+                if os.path.exists(cfg_file):
+                    os.remove(cfg_file)
+            except Exception:
+                pass
+            return jsonify({'configured': False, 'error': 'Your connected GitHub token is invalid or has expired. Please reconnect.'})
 
     elif request.method == 'POST':
         data = request.json or {}
@@ -130,6 +137,15 @@ def api_repos():
                     'description': r.get('description', '')
                 })
             return jsonify({'repos': repos})
+        elif res.status_code == 401:
+            # Token has expired or is invalid! Let's delete it so the user can re-auth
+            cfg_file = get_config_file(uid)
+            try:
+                if os.path.exists(cfg_file):
+                    os.remove(cfg_file)
+            except Exception:
+                pass
+            return jsonify({'error': 'Your GitHub token has expired or is invalid. Please reconnect.'}), 401
         else:
             return jsonify({'error': f'Failed to fetch repos: {res.text}'}), res.status_code
 
