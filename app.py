@@ -330,6 +330,108 @@ def api_upload():
         'failed': failed_paths
     })
 
+@app.route('/api/upload-dropped', methods=['POST'])
+def api_upload_dropped():
+    """Upload files sent directly from the browser (for hosted Render environment)."""
+    uid = request.headers.get('X-Firebase-UID')
+    config = load_config(uid)
+    token = config.get('token')
+    if not token:
+        return jsonify({'error': 'Unauthorized'}), 401
+        
+    data = request.json or {}
+    repo_name = data.get('repo')
+    files = data.get('files', []) # list of {'name': '...', 'content': 'base64...'}
+    
+    if not repo_name:
+        return jsonify({'error': 'Repository name is required'}), 400
+    if not files:
+        return jsonify({'error': 'No files provided'}), 400
+        
+    headers = get_github_headers(token)
+    
+    # Get user profile to know the owner
+    user_res = requests.get('https://api.github.com/user', headers=headers)
+    if user_res.status_code != 200:
+        return jsonify({'error': 'Failed to verify user token'}), 401
+    owner = user_res.json().get('login')
+    
+    # Get repository details (to find default branch)
+    repo_url = f'https://api.github.com/repos/{owner}/{repo_name}'
+    repo_res = requests.get(repo_url, headers=headers)
+    if repo_res.status_code != 200:
+        return jsonify({'error': f'Repository not found: {repo_res.text}'}), 404
+    
+    repo_info = repo_res.json()
+    default_branch = repo_info.get('default_branch', 'main')
+    
+    # Get remote files tree
+    remote_files = {}
+    ref_url = f'https://api.github.com/repos/{owner}/{repo_name}/git/ref/heads/{default_branch}'
+    ref_res = requests.get(ref_url, headers=headers)
+    if ref_res.status_code == 200:
+        commit_sha = ref_res.json()['object']['sha']
+        commit_url = f'https://api.github.com/repos/{owner}/{repo_name}/git/commits/{commit_sha}'
+        commit_res = requests.get(commit_url, headers=headers)
+        if commit_res.status_code == 200:
+            tree_sha = commit_res.json()['tree']['sha']
+            tree_url = f'https://api.github.com/repos/{owner}/{repo_name}/git/trees/{tree_sha}?recursive=1'
+            tree_res = requests.get(tree_url, headers=headers)
+            if tree_res.status_code == 200:
+                for item in tree_res.json().get('tree', []):
+                    if item['type'] == 'blob':
+                        remote_files[item['path']] = item['sha']
+                        
+    uploaded_paths = []
+    skipped_paths = []
+    failed_paths = []
+    
+    for f in files:
+        name = f.get('name')
+        content_b64 = f.get('content')
+        
+        try:
+            content_bytes = base64.b64decode(content_b64)
+        except Exception:
+            failed_paths.append(name)
+            continue
+            
+        # Git sha calculation
+        header = f"blob {len(content_bytes)}\0".encode('utf-8')
+        sha = hashlib.sha1()
+        sha.update(header)
+        sha.update(content_bytes)
+        local_sha = sha.hexdigest()
+        
+        remote_sha = remote_files.get(name)
+        if remote_sha == local_sha:
+            skipped_paths.append(name)
+            continue
+            
+        # Upload
+        put_url = f'https://api.github.com/repos/{owner}/{repo_name}/contents/{name}'
+        put_payload = {
+            'message': f'Upload {name} via Web Uploader',
+            'content': content_b64,
+            'branch': default_branch
+        }
+        if remote_sha:
+            put_payload['sha'] = remote_sha
+            
+        put_res = requests.put(put_url, json=put_payload, headers=headers)
+        if put_res.status_code in (200, 201):
+            uploaded_paths.append(name)
+        else:
+            failed_paths.append(name)
+            
+    success = len(failed_paths) == 0
+    return jsonify({
+        'success': success,
+        'uploaded': uploaded_paths,
+        'skipped': skipped_paths,
+        'failed': failed_paths
+    })
+
 @app.route('/api/logout', methods=['POST'])
 def api_logout():
     uid = request.headers.get('X-Firebase-UID')
