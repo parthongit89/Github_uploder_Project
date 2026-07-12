@@ -292,6 +292,9 @@ async function checkAuthentication() {
             isAuthenticated = false;
             tokenModal.classList.remove('hidden');
             repoGrid.innerHTML = '<div class="loading-placeholder">Connect GitHub to view repositories</div>';
+            if (data.error) {
+                showTokenError(data.error);
+            }
         }
     } catch (err) {
         console.error('Error checking authentication:', err);
@@ -371,7 +374,11 @@ async function loadRepositories() {
         const response = await fetchWithAuth('/api/repos');
         if (!response.ok) {
             const errData = await response.json().catch(() => ({}));
-            throw new Error(errData.error || `HTTP ${response.status}`);
+            const errMsg = errData.error || `HTTP ${response.status}`;
+            if (response.status === 401) {
+                checkAuthentication();
+            }
+            throw new Error(errMsg);
         }
         const data = await response.json();
         
@@ -634,7 +641,10 @@ async function uploadFiles() {
                 showToast('Upload completed successfully!', 'success');
                 webSelectedFiles = [];
             } else {
-                showToast('Upload completed with some errors.', 'error');
+                if (response.status === 401) {
+                    checkAuthentication();
+                }
+                showToast(data.error || 'Upload completed with some errors.', 'error');
             }
         } else {
             if (localFiles.length === 0) return;
@@ -647,7 +657,10 @@ async function uploadFiles() {
             if (response.status === 200 && data.success) {
                 showToast('Upload completed successfully!', 'success');
             } else {
-                showToast('Upload completed with some errors.', 'error');
+                if (response.status === 401) {
+                    checkAuthentication();
+                }
+                showToast(data.error || 'Upload completed with some errors.', 'error');
             }
         }
     } catch (err) {
