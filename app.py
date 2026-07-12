@@ -111,7 +111,8 @@ def api_config():
 def api_repos():
     uid = request.headers.get('X-Firebase-UID')
     config = load_config(uid)
-    if not config.get('token'):
+    token = config.get('token')
+    if not token:
         return jsonify({'error': 'Unauthorized'}), 401
     
     headers = get_github_headers(token)
