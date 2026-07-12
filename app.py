@@ -340,6 +340,21 @@ def api_logout():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+import traceback
+
+@app.errorhandler(500)
+@app.errorhandler(Exception)
+def handle_exception(e):
+    from werkzeug.exceptions import HTTPException
+    if isinstance(e, HTTPException):
+        return jsonify({'error': e.description}), e.code
+    tb = traceback.format_exc()
+    print("SERVER ERROR:\n", tb)
+    return jsonify({
+        'error': str(e),
+        'traceback': tb
+    }), 500
+
 # Serve assets
 @app.route('/assets/<path:filename>')
 def serve_assets(filename):
