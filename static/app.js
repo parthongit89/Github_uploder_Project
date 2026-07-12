@@ -69,8 +69,7 @@ document.addEventListener('DOMContentLoaded', () => {
             authModal.classList.add('hidden');
             checkAuthentication();
             
-            // Load dashboard data
-            loadRepositories();
+            // Load local files
             loadLocalFiles();
             
             // Start polling local directory every 3 seconds for real-time syncing
@@ -223,18 +222,29 @@ function showAuthError(msg) {
 async function checkAuthentication() {
     try {
         const response = await fetchWithAuth('/api/config');
+        if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            throw new Error(errData.error || `HTTP ${response.status}`);
+        }
         const data = await response.json();
         
         if (data.configured) {
             isAuthenticated = true;
             tokenModal.classList.add('hidden');
             showUserProfile(data.username, data.avatar_url);
+            loadRepositories();
         } else {
             isAuthenticated = false;
             tokenModal.classList.remove('hidden');
+            repoGrid.innerHTML = '<div class="loading-placeholder">Connect GitHub to view repositories</div>';
         }
     } catch (err) {
         console.error('Error checking authentication:', err);
+        showToast(`Authentication check failed: ${err.message}`, 'error');
+        // Fallback: show token modal so the user isn't stuck
+        isAuthenticated = false;
+        tokenModal.classList.remove('hidden');
+        repoGrid.innerHTML = '<div class="loading-placeholder text-error">Failed to check GitHub link</div>';
     }
 }
 
@@ -304,6 +314,10 @@ async function loadRepositories() {
     
     try {
         const response = await fetchWithAuth('/api/repos');
+        if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            throw new Error(errData.error || `HTTP ${response.status}`);
+        }
         const data = await response.json();
         
         if (data.repos) {
@@ -312,8 +326,9 @@ async function loadRepositories() {
             repoGrid.innerHTML = `<div class="loading-placeholder text-error">${data.error || 'Failed to load repos'}</div>`;
         }
     } catch (err) {
-        repoGrid.innerHTML = '<div class="loading-placeholder text-error">Failed to fetch repositories.</div>';
+        repoGrid.innerHTML = `<div class="loading-placeholder text-error">Failed to fetch repositories: ${err.message}</div>`;
         console.error(err);
+        showToast(`Repos load failed: ${err.message}`, 'error');
     }
 }
 
@@ -651,3 +666,15 @@ function showConfirm(message, onConfirm, onCancel = null) {
     
     container.appendChild(card);
 }
+
+// Global JS error reporting to UI toasts
+window.addEventListener('error', (e) => {
+    // Ignore firebase domain check errors that we already handle or general benign ones
+    if (e.message && e.message.includes('ResizeObserver')) return;
+    showToast(`JS Error: ${e.message}`, 'error');
+});
+
+window.addEventListener('unhandledrejection', (e) => {
+    const msg = e.reason ? (e.reason.message || e.reason) : 'Promise rejected';
+    showToast(`Promise Error: ${msg}`, 'error');
+});
