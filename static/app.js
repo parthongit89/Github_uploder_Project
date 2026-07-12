@@ -23,7 +23,11 @@ let currentUser = null;
 let isAuthenticated = false;
 let selectedRepo = null;
 let localFiles = [];
+let webSelectedFiles = [];
 let syncInterval = null;
+
+// DOM Elements
+const webFileInput = document.getElementById('web-file-input');
 
 // DOM Elements
 const authModal = document.getElementById('auth-modal');
@@ -101,6 +105,42 @@ function setupEventListeners() {
     
     btnUpload.addEventListener('click', uploadFiles);
     
+    // Web Drag & Drop / File Select Listeners
+    webFileInput.addEventListener('change', handleWebFileSelect);
+    
+    filesList.addEventListener('click', (e) => {
+        const dropzone = e.target.closest('.dropzone');
+        if (dropzone) {
+            webFileInput.click();
+        }
+    });
+    
+    filesList.addEventListener('dragover', (e) => {
+        const dropzone = e.target.closest('.dropzone');
+        if (dropzone) {
+            e.preventDefault();
+            dropzone.classList.add('dragover');
+        }
+    });
+    
+    filesList.addEventListener('dragleave', (e) => {
+        const dropzone = e.target.closest('.dropzone');
+        if (dropzone) {
+            dropzone.classList.remove('dragover');
+        }
+    });
+    
+    filesList.addEventListener('drop', (e) => {
+        const dropzone = e.target.closest('.dropzone');
+        if (dropzone) {
+            e.preventDefault();
+            dropzone.classList.remove('dragover');
+            if (e.dataTransfer.files.length > 0) {
+                addWebFiles(e.dataTransfer.files);
+            }
+        }
+    });
+    
     // Auth listeners
     btnAuthAction.addEventListener('click', handleAuthAction);
     btnGoogleAuth.addEventListener('click', handleGoogleAuth);
@@ -126,6 +166,21 @@ async function fetchWithAuth(url, options = {}) {
 }
 
 // Firebase Authentication Handlers
+function handleWebFileSelect(e) {
+    if (e.target.files.length > 0) {
+        addWebFiles(e.target.files);
+    }
+}
+
+function addWebFiles(filesListObj) {
+    for (let i = 0; i < filesListObj.length; i++) {
+        const file = filesListObj[i];
+        if (!webSelectedFiles.some(f => f.name === file.name)) {
+            webSelectedFiles.push(file);
+        }
+    }
+    renderLocalFiles(localFiles);
+}
 function toggleAuthMode() {
     authError.classList.add('hidden');
     authEmail.value = '';
@@ -462,16 +517,30 @@ function formatBytes(bytes) {
 }
 
 function renderLocalFiles(files) {
-    if (files.length === 0) {
-        filesList.innerHTML = '<div class="no-files-placeholder">No files in "Github uploder" directory</div>';
+    if (files.length === 0 && webSelectedFiles.length === 0) {
+        filesList.innerHTML = `
+            <div id="dropzone" class="dropzone">
+                <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="2" class="dropzone-icon">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="17 8 12 3 7 8"></polyline>
+                    <line x1="12" y1="3" x2="12" y2="15"></line>
+                </svg>
+                <div class="dropzone-text">Drag & drop files here or <span class="browse-link">browse</span></div>
+            </div>
+        `;
         updateUploadButtonState();
         return;
     }
     
     const scrollTop = filesList.scrollTop;
-    
     filesList.innerHTML = '';
-    files.forEach(file => {
+    
+    // Choose list content
+    const displayFiles = webSelectedFiles.length > 0 ?
+        webSelectedFiles.map(f => ({ name: f.name, path: f.name, size: f.size, ext: f.name.split('.').pop().toLowerCase(), isWeb: true })) :
+        files;
+    
+    displayFiles.forEach(file => {
         const item = document.createElement('div');
         item.className = 'file-item';
         
@@ -481,14 +550,19 @@ function renderLocalFiles(files) {
                 <div class="file-name" title="${file.path}">${file.path}</div>
             </div>
             <div class="file-size">${formatBytes(file.size)}</div>
-            <button class="btn-delete" title="Delete file from disk">
+            <button class="btn-delete" title="Remove file">
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
             </button>
         `;
         
         item.querySelector('.btn-delete').addEventListener('click', (e) => {
             e.stopPropagation();
-            deleteFile(file.path);
+            if (file.isWeb) {
+                webSelectedFiles = webSelectedFiles.filter(f => f.name !== file.name);
+                renderLocalFiles(localFiles);
+            } else {
+                deleteFile(file.path);
+            }
         });
         
         filesList.appendChild(item);
@@ -521,7 +595,7 @@ async function deleteFile(filePath) {
 }
 
 function updateUploadButtonState() {
-    if (selectedRepo && localFiles.length > 0) {
+    if (selectedRepo && (localFiles.length > 0 || webSelectedFiles.length > 0)) {
         btnUpload.disabled = false;
     } else {
         btnUpload.disabled = true;
@@ -530,22 +604,51 @@ function updateUploadButtonState() {
 
 // Upload Execution
 async function uploadFiles() {
-    if (!selectedRepo || localFiles.length === 0) return;
+    if (!selectedRepo) return;
     
     setUIBlocked(true);
     btnUpload.textContent = 'Uploading...';
     
     try {
-        const response = await fetchWithAuth('/api/upload', {
-            method: 'POST',
-            body: JSON.stringify({ repo: selectedRepo.name })
-        });
-        const data = await response.json();
-        
-        if (response.status === 200 && data.success) {
-            showToast('Upload completed successfully!', 'success');
+        if (webSelectedFiles.length > 0) {
+            const filesPayload = [];
+            for (let i = 0; i < webSelectedFiles.length; i++) {
+                const file = webSelectedFiles[i];
+                const base64Data = await readFileAsBase64(file);
+                filesPayload.push({
+                    name: file.name,
+                    content: base64Data
+                });
+            }
+            
+            const response = await fetchWithAuth('/api/upload-dropped', {
+                method: 'POST',
+                body: JSON.stringify({
+                    repo: selectedRepo.name,
+                    files: filesPayload
+                })
+            });
+            const data = await response.json();
+            
+            if (response.status === 200 && data.success) {
+                showToast('Upload completed successfully!', 'success');
+                webSelectedFiles = [];
+            } else {
+                showToast('Upload completed with some errors.', 'error');
+            }
         } else {
-            showToast('Upload completed with some errors.', 'error');
+            if (localFiles.length === 0) return;
+            const response = await fetchWithAuth('/api/upload', {
+                method: 'POST',
+                body: JSON.stringify({ repo: selectedRepo.name })
+            });
+            const data = await response.json();
+            
+            if (response.status === 200 && data.success) {
+                showToast('Upload completed successfully!', 'success');
+            } else {
+                showToast('Upload completed with some errors.', 'error');
+            }
         }
     } catch (err) {
         showToast('Server error occurred during upload: ' + err.message, 'error');
@@ -555,6 +658,18 @@ async function uploadFiles() {
         btnUpload.textContent = 'Upload';
         loadLocalFiles();
     }
+}
+
+function readFileAsBase64(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+            const base64String = reader.result.split(',')[1];
+            resolve(base64String);
+        };
+        reader.onerror = (error) => reject(error);
+        reader.readAsDataURL(file);
+    });
 }
 
 function setUIBlocked(blocked) {
