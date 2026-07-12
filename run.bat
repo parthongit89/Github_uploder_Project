@@ -41,7 +41,7 @@ if not exist "Github uploder" (
 :: Start Flask app and open browser
 echo [3/3] Launching application...
 echo [INFO] Starting Flask server...
-start "" http://127.0.0.1:5000
+start "" http://localhost:5000
 python app.py
 
 pause
