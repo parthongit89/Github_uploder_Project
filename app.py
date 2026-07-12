@@ -14,17 +14,25 @@ UPLOAD_DIR = os.path.join(os.getcwd(), 'Github uploder')
 if not os.path.exists(UPLOAD_DIR):
     os.makedirs(UPLOAD_DIR)
 
-def load_config():
-    if os.path.exists(CONFIG_FILE):
+def get_config_file(uid=None):
+    if not uid or uid == 'null' or uid == 'undefined':
+        return CONFIG_FILE
+    sanitized_uid = "".join(c for c in uid if c.isalnum() or c in ('-', '_'))
+    return f'config_{sanitized_uid}.json'
+
+def load_config(uid=None):
+    cfg_file = get_config_file(uid)
+    if os.path.exists(cfg_file):
         try:
-            with open(CONFIG_FILE, 'r') as f:
+            with open(cfg_file, 'r') as f:
                 return json.load(f)
         except Exception:
             return {}
     return {}
 
-def save_config(config_data):
-    with open(CONFIG_FILE, 'w') as f:
+def save_config(config_data, uid=None):
+    cfg_file = get_config_file(uid)
+    with open(cfg_file, 'w') as f:
         json.dump(config_data, f, indent=4)
 
 def get_git_sha1(filepath):
@@ -60,8 +68,9 @@ def index():
 
 @app.route('/api/config', methods=['GET', 'POST'])
 def api_config():
+    uid = request.headers.get('X-Firebase-UID')
     if request.method == 'GET':
-        config = load_config()
+        config = load_config(uid)
         token = config.get('token', '')
         if not token:
             return jsonify({'configured': False})
@@ -89,7 +98,7 @@ def api_config():
         res = requests.get('https://api.github.com/user', headers=headers)
         if res.status_code == 200:
             user_data = res.json()
-            save_config({'token': token})
+            save_config({'token': token}, uid)
             return jsonify({
                 'success': True,
                 'username': user_data.get('login'),
@@ -100,9 +109,9 @@ def api_config():
 
 @app.route('/api/repos', methods=['GET', 'POST'])
 def api_repos():
-    config = load_config()
-    token = config.get('token')
-    if not token:
+    uid = request.headers.get('X-Firebase-UID')
+    config = load_config(uid)
+    if not config.get('token'):
         return jsonify({'error': 'Unauthorized'}), 401
     
     headers = get_github_headers(token)
@@ -158,9 +167,12 @@ def api_files():
     
     file_list = []
     for root, dirs, files in os.walk(UPLOAD_DIR):
+        # Exclude hidden directories (like .git)
+        dirs[:] = [d for d in dirs if not d.startswith('.')]
+        
         for file in files:
-            # Skip operating system files
-            if file.lower() in ('desktop.ini', '.ds_store', 'thumbs.db'):
+            # Skip operating system files, sensitive credentials, and hidden files
+            if file.lower() in ('desktop.ini', '.ds_store', 'thumbs.db', 'config.json', '.env') or file.startswith('.'):
                 continue
             
             abs_path = os.path.join(root, file)
@@ -208,7 +220,8 @@ def api_delete_file():
 @app.route('/api/upload', methods=['POST'])
 def api_upload():
     """Upload files from local directory to selected repository, skipping repeated files."""
-    config = load_config()
+    uid = request.headers.get('X-Firebase-UID')
+    config = load_config(uid)
     token = config.get('token')
     if not token:
         return jsonify({'error': 'Unauthorized'}), 401
@@ -251,8 +264,12 @@ def api_upload():
     # Scan local files
     local_files = []
     for root, dirs, files in os.walk(UPLOAD_DIR):
+        # Exclude hidden directories (like .git)
+        dirs[:] = [d for d in dirs if not d.startswith('.')]
+        
         for file in files:
-            if file.lower() in ('desktop.ini', '.ds_store', 'thumbs.db'):
+            # Skip operating system files, sensitive credentials, and hidden files
+            if file.lower() in ('desktop.ini', '.ds_store', 'thumbs.db', 'config.json', '.env') or file.startswith('.'):
                 continue
             abs_path = os.path.join(root, file)
             rel_path = os.path.relpath(abs_path, UPLOAD_DIR).replace('\\', '/')
@@ -314,9 +331,11 @@ def api_upload():
 
 @app.route('/api/logout', methods=['POST'])
 def api_logout():
+    uid = request.headers.get('X-Firebase-UID')
+    cfg_file = get_config_file(uid)
     try:
-        if os.path.exists(CONFIG_FILE):
-            os.remove(CONFIG_FILE)
+        if os.path.exists(cfg_file):
+            os.remove(cfg_file)
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -328,5 +347,5 @@ def serve_assets(filename):
     return send_from_directory(os.getcwd(), filename)
 
 if __name__ == '__main__':
-    # Start the server on port 5000
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    # Start the server locally only (binds to 127.0.0.1 to prevent external network access)
+    app.run(host='127.0.0.1', port=5000, debug=False)
